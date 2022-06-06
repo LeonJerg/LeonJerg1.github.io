@@ -1,0 +1,7 @@
+"0","#Step_08"
+"0","set.seed(2022)"
+"0","lstm_forecast.01 <- "
+"0","  lstm_model %>% predict(x_te.arr.01, batch_size = 1) %>% .[, , 1]"
+"2","Error in predict(., x_te.arr.01, batch_size = 1) : 
+  object 'lstm_model' not found
+"

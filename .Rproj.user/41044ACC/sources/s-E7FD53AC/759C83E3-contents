@@ -1,0 +1,378 @@
+
+---
+title: "Research"
+author: "© Leon Jerg"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_float: yes
+    toc_depth: 3
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+---
+
+```{r setup, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+> May, 2022
+
+# Introduction
+
+My enthusiasm for the analysis of process parameters has accompanied me throughout my studies and professional experience.
+
+I consider it very important not only to recognize anomalies and behavioral patterns, but also to derive the right measures from them so that an economic added value can be created. No matter what industry you are in, data-driven business analysis always plays a major role and this is where my focus lies.
+
+An indication of my approach can be taken from the following report. I had the idea to analyze the health data of my Smart Watch and Phone. Here is a little outlook.
+
+# Health Data Report
+
+To keep things simple, I chose the number of steps per day I walked myself over the last few years as a process parameter. Accordingly, the imported time-series data looks like this.
+
+```{r echo = TRUE, message=FALSE, echo=FALSE, warning=FALSE, fig.width=8, fig.height=3, fig.align = 'center'}
+#Step_00
+library("lubridate")
+library("ggplot2")
+library("tidyverse")
+library("plotly")
+library("data.table")
+library("summarytools")
+
+#Step_01
+setwd("~/Documents/Leon/Website/LeonJerg.github.io")
+Dt <- read_csv("Step_Count_Data.csv", col_names = FALSE)
+colnames(Dt) <- c(LETTERS, sapply(LETTERS, function(x) paste0(x, LETTERS)))
+Dt$A <- as.POSIXct(Dt$A, tz = "", format = "%Y-%m-%d %H:%M:%OS")
+Dt$B <- as.integer(Dt$B)
+Dt <- Dt %>% rename(Date = A, Step.Count = B) %>% drop_na() %>% as.tibble()
+head(Dt)
+```
+
+```{r echo = TRUE, message=TRUE, echo=TRUE, warning=FALSE, fig.width=8, fig.height=3, fig.align = 'center'}
+Average.Per.Day <- mean(Dt$Step.Count)
+Average.Per.Day
+```
+
+From the year 2016 on, I have walked an average of about 7,000 steps per day, which is quite a bit :-)
+
+Best-practice data analysis always involves two basic things.
+
+* Propper data visualization
+* Derivation and implementation of enhancing measures
+
+Especially for time-series analysis this approach is very important to understand the data one is dealing with.
+
+## Visualization
+
+Let's start with an appropriate data visualization by plotting the calendar week against the summed number of steps per week. Please note that all integrated plots are interactive and can be played with by clicking on the navigation bar in the upper right hand corner :-)
+
+```{r echo = TRUE, message=FALSE, echo=FALSE, warning=FALSE, fig.width=8, fig.height=5, fig.align = 'center'}
+#Step_02
+P1 <- Dt %>% group_by(Year = year(Date), Week = week(Date)) %>% summarize(Step.Count.Sum = sum(Step.Count)) %>%
+  ggplot(aes(x = Week, y = Step.Count.Sum)) + geom_line(color = "grey", size = 0.3) + geom_point(color = "black", size = 0.8) + theme_light() + xlab("") + ylab("") + facet_wrap(~Year) + geom_smooth(method = "lm", fill = "grey70", 
+              color = "black", size = 0.1)
+ggplotly(P1)
+```
+
+It can be seen that I have become better and more consistent on average over the years, especially in 2021. This has a particularly positive effect on my fitness, which is a great advantage as an active tennis and soccer player :-)
+
+Since I naturally want to get better and better over time, I wonder how my performance will develop in the short and medium term. Accordingly, I had the idea to train a Machine Learning algorithm based on the historical data, which forecasts my performance.
+
+This helps me to identify low-performance periods in advance to become even more consistent in my development.
+
+## Deployment
+
+I decided to train a **Long-Short-Term Memory** *LSTM* **Neural Network** *NN* on the basis of the historical data with the aim of predicting the weekly *Step.Count.Sum* average for 50 weeks in advance [~1 year]. An *LSTM* has the advantage that it takes into account long-term dependencies and does not suffer from the vanishing gradient problem.
+
+The approach is to train the model and determine the architecture using all the available data from 2016 to 2021. The model is then validated using the remaining 2021 and 2022 data and a forecast is generated for the remaining 2022 and some 2023 weeks.
+
+Only *Step.Count.Sum* observations from past weeks within past years are used as a source of information for algorithm training. In consequence, the data is prepared with regard to the underlying dimensions. The detailed ```R``` Code is hidden, but can be made available upon request.
+
+```{r echo = TRUE, message=FALSE, echo=FALSE, warning=FALSE, fig.width=8, fig.height=5, fig.align = 'center'}
+#Step_03
+Dt.NN <- Dt %>% group_by(Year = year(Date), Week = week(Date)) %>% summarize(Step.Count.Sum = sum(Step.Count))
+DT.NN.Test <- Dt.NN %>% tail(n = 50)
+
+n <- dim(Dt.NN)[1]
+DT.NN.Train <- Dt.NN[1:(n - 50),]
+
+DT.NN.Train <- as.data.table(DT.NN.Train)
+DT.NN.Test <- as.data.table(DT.NN.Test)
+```
+
+In order to predict the target values for the upcoming pred = 50 weeks, the algorithm lapse back lag = 50 weeks starting from the very beginning and at each iteration. As a result and regarding the underlying data, no target values are conducted by the algorithm for the first 50 observational weeks. However, the estimated target values of the 50 future weeks are delivered instead as a forecast.
+
+```{r echo = TRUE, message=TRUE, echo=TRUE, warning=FALSE, fig.width=8, fig.height=3, fig.align = 'center'}
+#Step_04
+pred <- 50
+lag <- pred
+```
+
+```{r echo = TRUE, message=FALSE, echo=FALSE, warning=FALSE, fig.width=8, fig.height=5, fig.align = 'center'}
+#Step_05
+DT.NN.Train.Scal <- scale(DT.NN.Train)
+scal.train.01 <- as.matrix(DT.NN.Train.Scal)
+
+scal.gtruth.01 <- scale(DT.NN.Train$Step.Count.Sum)
+
+x_tr.data.01 <- list()
+
+for (i in 1:ncol(scal.train.01)) {
+  x_tr.data.01[[i]] <- t(sapply(
+    1:(length(scal.train.01[, i]) - lag - pred + 1),
+    function(x) scal.train.01[x:(x + lag - 1), i]
+  ))
+}
+
+x_tr.arr.01 <- array(
+  data = as.numeric(unlist(x_tr.data.01)),
+  dim = c(
+    nrow(x_tr.data.01[[1]]),
+    lag,
+    4
+  )
+)
+
+y_tr.data.01 <- t(sapply(
+  (1 + lag):(length(scal.gtruth.01) - pred + 1),
+  function(x) scal.gtruth.01[x:(x + pred - 1)]
+))
+
+y_tr.arr.01 <- array(
+  data = as.numeric(unlist(y_tr.data.01)),
+  dim = c(
+    nrow(y_tr.data.01),
+    pred,
+    1
+  )
+)
+
+x_te.01 <- 
+  DT.NN.Train$Year[(nrow(scal.train.01) - pred + 1):nrow(scal.train.01)]
+x_te.02 <- 
+  DT.NN.Train$Week[(nrow(scal.train.01) - pred + 1):nrow(scal.train.01)]
+x_te.03 <- 
+  DT.NN.Train$Step.Count.Sum[(nrow(scal.train.01) - pred + 
+                                           1):nrow(scal.train.01)]
+
+x_te.scal.01 <- (x_te.01 - mean(DT.NN.Train$Year)) / sd(DT.NN.Train$Year)
+x_te.scal.02 <- (x_te.02 - mean(DT.NN.Train$Week)) / sd(DT.NN.Train$Week)
+x_te.scal.03 <- 
+  (x_te.03 - mean(DT.NN.Train$Step.Count.Sum)) / 
+  sd(DT.NN.Train$Step.Count.Sum)
+
+x_te.data.01 <- 
+  c(x_te.scal.01, x_te.scal.02, x_te.scal.03)
+
+x_te.arr.01 <- array(
+  data = x_te.data.01,
+  dim = c(
+    1,
+    lag,
+    4
+  )
+)
+```
+
+The model architecture consists of several hidden layers with batch normalization and dropout regularization to avoid overfitting. In addition, backpropagation is performed using a gradient-based optimization technique. The **Mean Absolute Error** *MAE*, is used as an evaluation criterion to address the gap between the original observations [G.Truth] and the predictions [V.Fitted].
+
+The exact model architecture is summarized as follows.
+
+```{r echo = TRUE, message=FALSE, echo=TRUE, warning=FALSE, fig.width=8, fig.height=3, fig.align = 'center'}
+#Step_06
+##Seed
+library("keras")
+library("tensorflow")
+
+set.seed(2022)
+set_random_seed(2022, disable_gpu = TRUE)
+
+##Model architecture
+lstm_model <- keras_model_sequential()
+
+set.seed(2022)
+lstm_model %>%
+  layer_lstm(units = 50,
+             batch_input_shape = c(1, 50, 4),
+             return_sequences = TRUE,
+             stateful = TRUE) %>%
+  layer_batch_normalization() %>%
+  layer_dropout(rate = 0.5) %>%
+  layer_lstm(units = 200,
+             return_sequences = TRUE,
+             stateful = TRUE) %>%
+  layer_batch_normalization() %>%
+  layer_dropout(rate = 0.5) %>%
+  layer_lstm(units = 200 ,
+             return_sequences = TRUE,
+             stateful = TRUE) %>%
+  layer_batch_normalization() %>%
+  layer_dropout(rate = 0.5) %>%
+  layer_lstm(units = 200 ,
+             return_sequences = TRUE,
+             stateful = TRUE) %>%
+  layer_batch_normalization() %>%
+  layer_dropout(rate = 0.5) %>%
+  time_distributed(keras::layer_dense(units = 1))
+
+##Optimizer and evaluation metric
+set.seed(2022)
+lstm_model %>% 
+  compile(loss = "mae", optimizer = "adam", metrics = "accuracy")
+
+##Model architecture summary
+summary(lstm_model)
+```
+
+The next step is to train and tune the model. The goal is to find hyperparameters that achieve low training and validation error at the same time. The following parameters are finally picked.
+
+```{r echo = TRUE, message=TRUE, echo=TRUE, warning=FALSE, fig.width=8, fig.height=3, fig.align = 'center'}
+#Step_07
+##Hyperparameter setting & Network training
+set.seed(2022)
+lstm_model %>% fit(
+  x = x_tr.arr.01,
+  y = y_tr.arr.01,
+  batch_size = 1,
+  epochs = 100,
+  verbose = 0,
+  shuffle = FALSE
+)
+```
+
+The evaluation of the training data is shown graphically as follows.
+
+```{r echo = TRUE, message=FALSE, echo=FALSE, warning=FALSE, fig.width=8, fig.height=5, fig.align = 'center'}
+#Step_08
+set.seed(2022)
+lstm_forecast.01 <- 
+  lstm_model %>% predict(x_te.arr.01, batch_size = 1) %>% .[, , 1]
+
+lstm_forecast.uscal.01 <- 
+  lstm_forecast.01 * sd(DT.NN.Train$Step.Count.Sum) + 
+  mean(DT.NN.Train$Step.Count.Sum)
+
+set.seed(2022)
+fitted.01 <- 
+  predict(lstm_model, x_tr.arr.01, batch_size = 1) %>% .[, , 1]
+
+if (dim(fitted.01)[2] > 1) {
+  fit.01 <- 
+    c(fitted.01[, 1], fitted.01[dim(fitted.01)[1], 2:dim(fitted.01)[2]])
+} else {
+  fit.01 <- fitted.01[, 1]
+}
+
+fitted.obs.01 <- 
+  fit.01 * sd(DT.NN.Train$Step.Count.Sum) + 
+  mean(DT.NN.Train$Step.Count.Sum)
+
+fitted.obs.visz.01 <- c(rep(NA, lag), fitted.obs.01)
+fitted.obs.visz.01 <- as.data.frame(fitted.obs.visz.01)
+DT.NN.Train.Eval <- cbind(DT.NN.Train, fitted.obs.visz.01)
+DT.NN.Train.Eval$Step.Count.Sum <- as.integer(DT.NN.Train.Eval$Step.Count.Sum)
+DT.NN.Train.Eval$fitted.obs.visz.01 <- as.integer(DT.NN.Train.Eval$fitted.obs.visz.01)
+
+P2 <- DT.NN.Train.Eval %>%
+  group_by(Year, Week, G.Truth = Step.Count.Sum, 
+           V.Fitted = fitted.obs.visz.01) %>% summarise() %>% 
+  melt(id.vars = c("Year", "Week"), variable.name = "Target", 
+       value.name = "Step.Count.Sum") %>% 
+  ggplot(aes(x = Week, y = Step.Count.Sum)) + 
+  geom_line(size = 0.2, aes(linetype = Target)) + 
+  facet_wrap(~Year, scales = "fixed") + theme_light() + 
+  xlab("") + ylab("")
+ggplotly(P2)
+```
+
+Since the training performance looks very reasonable, it is further investigated how well the model performs on unseen data. Therefore, the evaluation of the validation data is shown graphically as follows.
+
+```{r echo = TRUE, message=FALSE, echo=FALSE, warning=FALSE, fig.width=7, fig.height=3, fig.align = 'center'}
+#Step_09
+lstm_forecast.uscal.01 <- as.data.frame(lstm_forecast.uscal.01)
+DT.NN.Test.Eval <- cbind(DT.NN.Test, lstm_forecast.uscal.01)
+DT.NN.Test.Eval$Step.Count.Sum <- as.integer(DT.NN.Test.Eval$Step.Count.Sum)
+DT.NN.Test.Eval$lstm_forecast.uscal.01 <- as.integer(DT.NN.Test.Eval$lstm_forecast.uscal.01)
+
+options(scipen = 5)
+P3 <- DT.NN.Test.Eval %>%
+  group_by(Year, Week, G.Truth = Step.Count.Sum, 
+           V.Fitted = lstm_forecast.uscal.01) %>% summarise() %>% 
+  melt(id.vars = c("Year", "Week"), variable.name = "Target", 
+       value.name = "Step.Count.Sum") %>% 
+  ggplot(aes(x = Week, y = Step.Count.Sum, color = Target)) + 
+  geom_line(size = 0.2) +
+  facet_wrap(~Year, scales = "fixed") + theme_light() + 
+  xlab("") + ylab("")
+ggplotly(P3)
+```
+
+Since both the training and validation performance look reasonable, the model can be used to generate a forecast. The forecast covers most of the year 2022 and even a short period in 2023, whereby it is particularly relevant for my personal scheduling. It is shown graphically as follows.
+
+```{r echo = TRUE, message=FALSE, echo=FALSE, warning=FALSE, fig.width=7, fig.height=3, fig.align = 'center'}
+#Step_10
+x_te.scal.05 <- 
+  (DT.NN.Test.Eval$Year - mean(DT.NN.Test.Eval$Year)) / sd(DT.NN.Test.Eval$Year)
+x_te.scal.06 <- 
+  (DT.NN.Test.Eval$Week - mean(DT.NN.Test.Eval$Week)) / sd(DT.NN.Test.Eval$Week)
+x_te.scal.07 <- 
+  (DT.NN.Test.Eval$Step.Count.Sum - 
+     mean(DT.NN.Test.Eval$Step.Count.Sum)) / 
+  sd(DT.NN.Test.Eval$Step.Count.Sum)
+
+x_te.data.02 <- 
+  c(x_te.scal.05, x_te.scal.06, x_te.scal.07)
+x_te.data.02[is.na(x_te.data.02)] = 0
+
+x_te.arr.02 <- array(
+  data = x_te.data.02,
+  dim = c(
+    1,
+    lag,
+    4
+  )
+)
+
+set.seed(2022)
+lstm_forecast.02 <- 
+  lstm_model %>% predict(x_te.arr.02, batch_size = 1) %>% .[, , 1]
+
+lstm_forecast.uscal.02 <- 
+  lstm_forecast.02 * sd(DT.NN.Test.Eval$Step.Count.Sum) + 
+  mean(DT.NN.Test.Eval$Step.Count.Sum)
+
+lstm_forecast.uscal.02 <- as.data.frame(lstm_forecast.uscal.02)
+
+d1 <- c(rep(2022, 34), rep(2023, 16))
+d2 <- c(20:53, 1:16)
+d <- data.frame(d1, d2)
+d <- d %>% group_by(Year = d1, Week = d2) %>% summarise()
+
+DT.NN.Forecast <- cbind(d, lstm_forecast.uscal.02)
+DT.NN.Forecast$lstm_forecast.uscal.02 <- as.integer(DT.NN.Forecast$lstm_forecast.uscal.02)
+
+P4 <- DT.NN.Forecast %>% 
+  group_by(Year, Week, Future.Pred = lstm_forecast.uscal.02) %>% 
+  summarise() %>% melt(id.vars = c("Year", "Week"), 
+                       variable.name = "Target", 
+                       value.name = "Step.Count.Sum") %>%
+  ggplot(aes(x = Week, y = Step.Count.Sum, color = Target)) + 
+  geom_line(size = 0.1, aes(linetype = Target), color = "blue") + 
+  geom_point(size = 0.5, color = "blue", alpha = 1) + 
+  geom_point(size = 0.3, color = "lightblue") + 
+  facet_wrap(~Year, scales = "fixed") + theme_light() + 
+  xlab("") + ylab("")
+ggplotly(P4)
+```
+
+This small case study shows my approach to solving data-driven problems. In my opinion, the potential of AI-based Business Analytics methods around the globe is still underestimated and the possibilities unimaginable.
+
+As with my "step-a-day" performance, I constantly try to achieve even better and more robust results with my research and I am very interested in learning and developing in a professional environment :-)
+
+
+
+
+
+

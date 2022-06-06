@@ -1,0 +1,22 @@
+
+---
+title: "Health Data Analysis"
+author: "© Leon Jerg"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_float: yes
+    toc_depth: 3
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+---
+
+```{r setup, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+> Stand: 05.05.2022
+
+# Report

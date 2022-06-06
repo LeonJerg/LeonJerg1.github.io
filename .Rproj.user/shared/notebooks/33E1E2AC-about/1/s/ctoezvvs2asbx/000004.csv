@@ -1,0 +1,5 @@
+"0","#Step_02"
+"0","P1 <- Dt %>% group_by(Year = year(Date), Week = week(Date)) %>% summarize(Step.Count.Sum = sum(Step.Count)) %>%"
+"0","  ggplot(aes(x = Week, y = Step.Count.Sum)) + geom_line(color = ""grey"", size = 0.3) + geom_point(color = ""black"", size = 0.8) + theme_light() + xlab("""") + ylab("""") + facet_wrap(~Year) + geom_smooth(method = ""lm"", fill = ""grey70"", "
+"0","              color = ""black"", size = 0.1)"
+"0","ggplotly(P1)"
